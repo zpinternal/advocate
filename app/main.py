@@ -3,198 +3,150 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.middleware.sessions import SessionMiddleware
+from flask import Flask, jsonify, redirect, render_template, request, session
 
-from app.files import router as files_router
+from app.files import bp as files_bp
+from app.gemini import bp as gemini_bp
 from app.gemini import init_db as init_gemini_db
-from app.gemini import router as gemini_router
-from app.ftp import router as ftp_router
-from app.task_routes import router as task_router
-from app.terminal import router as terminal_router
-from app.zlink import init_db, router as zlink_router
+from app.ftp import bp as ftp_bp
+from app.task_routes import bp as task_bp
+from app.terminal import bp as terminal_bp
+from app.zlink import bp as zlink_bp
+from app.zlink import init_db as init_zlink_db
 
-
-APP_VERSION = "0.7.0"
-app = FastAPI(title="Advocate", version=APP_VERSION)
-templates = Jinja2Templates(directory="templates")
-
+APP_VERSION = "0.8.0"
 PUBLIC_PATH_PREFIXES = ("/health", "/login", "/static")
 
 
-class AuthConfigError(RuntimeError):
-    pass
+def create_app() -> Flask:
+    app = Flask(__name__, static_folder="../static", template_folder="../templates")
+    app.config["SECRET_KEY"] = os.getenv(
+        "ADVOCATE_SESSION_SECRET"
+    ) or secrets.token_hex(32)
 
-
-def get_expected_credentials() -> tuple[str, str]:
-    user = os.getenv("ADVOCATE_USER")
-    password = os.getenv("ADVOCATE_PASSWORD")
-    if not user or not password:
-        raise AuthConfigError(
-            "ADVOCATE_USER and ADVOCATE_PASSWORD must both be set before starting the server."
-        )
-    return user, password
-
-
-def _wants_html(request: Request) -> bool:
-    accept = request.headers.get("accept", "")
-    return "text/html" in accept.lower()
-
-
-def _is_public_path(path: str) -> bool:
-    return any(
-        path == prefix or path.startswith(f"{prefix}/")
-        for prefix in PUBLIC_PATH_PREFIXES
-    )
-
-
-@app.middleware("http")
-async def session_auth_guard(request: Request, call_next):
-    path = request.url.path
-    if _is_public_path(path):
-        return await call_next(request)
-
-    try:
-        get_expected_credentials()
-    except AuthConfigError as exc:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "ok": False,
-                "error": {"code": "AUTH_CONFIG_ERROR", "message": str(exc)},
-            },
-        )
-
-    if request.session.get("authenticated"):
-        return await call_next(request)
-
-    if _wants_html(request):
-        login_redirect = f"/login?next={path}"
-        return RedirectResponse(
-            url=login_redirect, status_code=status.HTTP_303_SEE_OTHER
-        )
-
-    return JSONResponse(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        content={
-            "ok": False,
-            "error": {
-                "code": "UNAUTHORIZED",
-                "message": "Login required. Use /login for session authentication.",
-            },
-        },
-    )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
-    init_gemini_db()
     Path("static").mkdir(parents=True, exist_ok=True)
     Path("templates").mkdir(parents=True, exist_ok=True)
+    init_zlink_db()
+    init_gemini_db()
 
+    app.register_blueprint(zlink_bp)
+    app.register_blueprint(files_bp)
+    app.register_blueprint(ftp_bp)
+    app.register_blueprint(task_bp)
+    app.register_blueprint(terminal_bp)
+    app.register_blueprint(gemini_bp)
 
-session_secret = os.getenv("ADVOCATE_SESSION_SECRET") or secrets.token_hex(32)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=session_secret,
-    same_site="lax",
-    https_only=False,
-    max_age=60 * 60 * 8,
-)
+    @app.before_request
+    def session_auth_guard():
+        path = request.path
+        is_public = any(
+            path == p or path.startswith(f"{p}/") for p in PUBLIC_PATH_PREFIXES
+        )
+        if is_public:
+            return None
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.include_router(zlink_router)
-app.include_router(files_router)
-app.include_router(ftp_router)
-app.include_router(task_router)
-app.include_router(terminal_router)
-app.include_router(gemini_router)
+        if not os.getenv("ADVOCATE_USER") or not os.getenv("ADVOCATE_PASSWORD"):
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "AUTH_CONFIG_ERROR",
+                            "message": "ADVOCATE_USER and ADVOCATE_PASSWORD must both be set before starting the server.",
+                        },
+                    }
+                ),
+                500,
+            )
 
+        if session.get("authenticated"):
+            return None
 
-@app.get("/health")
-def health():
-    return {"ok": True, "status": "healthy"}
-
-
-@app.get("/", include_in_schema=False)
-def root():
-    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@app.get("/login", include_in_schema=False)
-def login_page(request: Request, next: str = "/dashboard"):
-    if request.session.get("authenticated"):
-        return RedirectResponse(url=next, status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse(
-        "core/login.html",
-        {
-            "request": request,
-            "title": "Login",
-            "next_path": next,
-            "error": None,
-        },
-    )
-
-
-@app.post("/login", include_in_schema=False)
-def login_submit(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    next: str = Form("/dashboard"),
-):
-    expected_user, expected_password = get_expected_credentials()
-    user_ok = hmac.compare_digest(username, expected_user)
-    pass_ok = hmac.compare_digest(password, expected_password)
-
-    if not (user_ok and pass_ok):
-        return templates.TemplateResponse(
-            "core/login.html",
-            {
-                "request": request,
-                "title": "Login",
-                "next_path": next,
-                "error": "Invalid username or password.",
-            },
-            status_code=status.HTTP_401_UNAUTHORIZED,
+        accepts_html = "text/html" in request.headers.get("accept", "").lower()
+        if accepts_html:
+            return redirect(f"/login?next={path}", code=303)
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "UNAUTHORIZED",
+                        "message": "Login required. Use /login for session authentication.",
+                    },
+                }
+            ),
+            401,
         )
 
-    request.session.update({"authenticated": True, "username": username})
-    return RedirectResponse(
-        url=next or "/dashboard", status_code=status.HTTP_303_SEE_OTHER
-    )
+    @app.get("/health")
+    def health():
+        return jsonify({"ok": True, "status": "healthy"})
+
+    @app.get("/")
+    def root():
+        return redirect("/dashboard", code=303)
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "GET":
+            next_path = request.args.get("next", "/dashboard")
+            if session.get("authenticated"):
+                return redirect(next_path, code=303)
+            return render_template(
+                "core/login.html", title="Login", next_path=next_path, error=None
+            )
+
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        next_path = request.form.get("next", "/dashboard")
+        expected_user = os.getenv("ADVOCATE_USER", "")
+        expected_password = os.getenv("ADVOCATE_PASSWORD", "")
+        if not (
+            hmac.compare_digest(username, expected_user)
+            and hmac.compare_digest(password, expected_password)
+        ):
+            return (
+                render_template(
+                    "core/login.html",
+                    title="Login",
+                    next_path=next_path,
+                    error="Invalid username or password.",
+                ),
+                401,
+            )
+
+        session["authenticated"] = True
+        session["username"] = username
+        return redirect(next_path or "/dashboard", code=303)
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect("/login", code=303)
+
+    @app.get("/dashboard")
+    def dashboard():
+        return render_template(
+            "core/dashboard.html",
+            title="Dashboard",
+            username=session.get("username", "user"),
+        )
+
+    @app.get("/api/me")
+    def me():
+        return jsonify(
+            {
+                "ok": True,
+                "data": {
+                    "module": "core",
+                    "auth": "session",
+                    "version": APP_VERSION,
+                    "user": session.get("username"),
+                },
+            }
+        )
+
+    return app
 
 
-@app.post("/logout", include_in_schema=False)
-def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@app.get("/dashboard", include_in_schema=False)
-def dashboard(request: Request):
-    return templates.TemplateResponse(
-        "core/dashboard.html",
-        {
-            "request": request,
-            "title": "Dashboard",
-            "username": request.session.get("username", "user"),
-        },
-    )
-
-
-@app.get("/api/me")
-def me(request: Request):
-    return {
-        "ok": True,
-        "data": {
-            "module": "core",
-            "auth": "session",
-            "version": APP_VERSION,
-            "user": request.session.get("username"),
-        },
-    }
+app = create_app()

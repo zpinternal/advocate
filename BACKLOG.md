@@ -17,3 +17,4 @@
 
 - Add CSRF protection tokens for login/logout form submissions.
 - Build first-class UI pages for Files/FTP/Terminal/Gemini modules under shared navigation.
+- Add richer interactive UI controls for FTP workflows (archive/compress/extract) with progress polling.

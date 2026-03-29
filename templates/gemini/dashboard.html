@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block content %}
+<h1>Gemini Assistant</h1>
+<div class="card">
+  <textarea id="msg" rows="4" style="width:100%" placeholder="Ask something..."></textarea>
+  <button onclick="sendChat()">Send</button>
+  <pre id="out"></pre>
+</div>
+<script>
+async function sendChat(){const message=document.getElementById('msg').value;const r=await fetch('/gemini/chat/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "core/base.html" %}
+{% block content %}
+<h1>Terminal</h1>
+<div class="card">
+  <input id="cmd" placeholder="pwd" /> <button onclick="runCmd()">Run</button>
+  <pre id="out"></pre>
+</div>
+<script>
+async function runCmd(){const command=document.getElementById('cmd').value;const r=await fetch('/terminal/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}
+</script>
+{% endblock %}

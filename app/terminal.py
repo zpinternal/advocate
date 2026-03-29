@@ -1,23 +1,13 @@
 from __future__ import annotations
 
-import asyncio
-import os
-import shlex
 import subprocess
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
+from flask import Blueprint, jsonify, render_template, request
 
 
-router = APIRouter(prefix="/terminal", tags=["terminal"])
+bp = Blueprint("terminal", __name__, url_prefix="/terminal")
 BASE_DIR = Path.cwd().resolve()
-
-
-class ExecRequest(BaseModel):
-    command: str = Field(min_length=1)
-    cwd: str | None = None
-    timeout_seconds: int = Field(default=20, ge=1, le=300)
 
 
 def _safe_cwd(cwd: str | None) -> Path:
@@ -31,113 +21,79 @@ def _safe_cwd(cwd: str | None) -> Path:
         target = target.resolve()
 
     if not str(target).startswith(str(BASE_DIR)):
-        raise HTTPException(status_code=400, detail="cwd escapes base directory")
+        raise ValueError("cwd escapes base directory")
     if not target.exists() or not target.is_dir():
-        raise HTTPException(status_code=404, detail="cwd does not exist")
+        raise FileNotFoundError("cwd does not exist")
     return target
 
 
-@router.post("/exec")
-def execute_command(payload: ExecRequest):
-    cwd = _safe_cwd(payload.cwd)
+@bp.get("/ui")
+def terminal_ui():
+    return render_template("terminal/dashboard.html", title="Terminal")
+
+
+@bp.post("/exec")
+def execute_command():
+    payload = request.get_json(silent=True) or {}
+    command = str(payload.get("command", "")).strip()
+    timeout_seconds = int(payload.get("timeout_seconds", 20))
+    cwd_value = payload.get("cwd")
+    if not command:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "command is required",
+                    },
+                }
+            ),
+            422,
+        )
+
+    try:
+        cwd = _safe_cwd(cwd_value)
+    except ValueError as exc:
+        return (
+            jsonify({"ok": False, "error": {"code": "BAD_CWD", "message": str(exc)}}),
+            400,
+        )
+    except FileNotFoundError as exc:
+        return (
+            jsonify({"ok": False, "error": {"code": "NOT_FOUND", "message": str(exc)}}),
+            404,
+        )
+
     try:
         proc = subprocess.run(
-            payload.command,
+            command,
             shell=True,
             cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=payload.timeout_seconds,
+            timeout=max(1, min(300, timeout_seconds)),
         )
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=408, detail="Command timed out")
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "TIMEOUT", "message": "Command timed out"},
+                }
+            ),
+            408,
+        )
 
-    stdout = proc.stdout[-20000:]
-    stderr = proc.stderr[-20000:]
-
-    return {
-        "ok": True,
-        "data": {
-            "command": payload.command,
-            "cwd": str(cwd),
-            "exit_code": proc.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-        },
-    }
-
-
-async def _run_ws_command(command: str, cwd: Path) -> dict[str, str | int]:
-    process = await asyncio.create_subprocess_shell(
-        command,
-        cwd=str(cwd),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=os.environ.copy(),
-    )
-    stdout, stderr = await process.communicate()
-    return {
-        "command": command,
-        "exit_code": process.returncode,
-        "stdout": stdout.decode("utf-8", errors="replace")[-20000:],
-        "stderr": stderr.decode("utf-8", errors="replace")[-20000:],
-    }
-
-
-@router.websocket("/ws")
-async def websocket_terminal(websocket: WebSocket):
-    current_cwd = BASE_DIR
-    await websocket.accept()
-    await websocket.send_json(
+    return jsonify(
         {
-            "event": "connected",
-            "message": "Send commands as plain text. Type 'exit' to close.",
-            "cwd": str(current_cwd),
+            "ok": True,
+            "data": {
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout[-20000:],
+                "stderr": proc.stderr[-20000:],
+            },
         }
     )
-
-    while True:
-        try:
-            message = await websocket.receive_text()
-        except WebSocketDisconnect:
-            break
-
-        command = message.strip()
-        if not command:
-            await websocket.send_json({"event": "error", "message": "Empty command"})
-            continue
-
-        if command.lower() in {"exit", "quit"}:
-            await websocket.send_json({"event": "closing", "message": "Session closed"})
-            await websocket.close()
-            break
-
-        if command.startswith("cd "):
-            parts = shlex.split(command)
-            if len(parts) == 2:
-                try:
-                    new_cwd = _safe_cwd(str((current_cwd / parts[1]).resolve()))
-                except HTTPException as exc:
-                    await websocket.send_json(
-                        {
-                            "event": "error",
-                            "message": exc.detail,
-                            "status_code": exc.status_code,
-                        }
-                    )
-                    continue
-                current_cwd = new_cwd
-                await websocket.send_json({"event": "cwd", "cwd": str(new_cwd)})
-                continue
-
-        try:
-            result = await asyncio.wait_for(
-                _run_ws_command(command, current_cwd), timeout=300
-            )
-        except asyncio.TimeoutError:
-            await websocket.send_json(
-                {"event": "error", "message": "Command timed out"}
-            )
-            continue
-
-        await websocket.send_json({"event": "result", "data": result})

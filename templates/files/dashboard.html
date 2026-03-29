@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% block content %}
+<h1>File Explorer</h1>
+<div class="card"><input id="path" value="."/><button onclick="loadItems()">List</button><pre id="out"></pre></div>
+<script>
+async function loadItems(){const p=document.getElementById('path').value;const r=await fetch('/files/list?path='+encodeURIComponent(p));document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}
+loadItems();
+</script>
+{% endblock %}

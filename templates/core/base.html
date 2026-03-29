@@ -9,10 +9,14 @@
   <body>
     <header class="topbar">
       <div class="brand"><a href="/dashboard">Advocate</a></div>
-      {% if request.session.get('authenticated') %}
+      {% if session.get('authenticated') %}
       <nav class="nav-links">
         <a href="/dashboard">Dashboard</a>
         <a href="/zlink/dashboard">ZLink</a>
+        <a href="/files/ui">Files</a>
+        <a href="/terminal/ui">Terminal</a>
+        <a href="/ftp/ui">FTP</a>
+        <a href="/gemini/ui">Gemini</a>
       </nav>
       <form method="post" action="/logout" class="logout-form">
         <button type="submit">Logout</button>

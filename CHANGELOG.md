@@ -55,3 +55,8 @@
 - Integrated ZLink router and static file serving into the main FastAPI app.
 - Bumped app version from 0.1.0 to 0.2.0 (minor increase for new feature set).
 - Added required project governance files: AGENTS.md, AGENT_NOTES.md, BACKLOG.md, DESIGN.md, README.md.
+
+## 0.8.0 - 2026-03-29 15:00 (GMT+3)
+- Migrated backend to Flask app factory and session-auth guarded routes.
+- Ported milestone APIs (ZLink, Files, Tasks, Terminal, FTP, Gemini) to Flask blueprints.
+- Added/updated UI routes and navigation for milestones 2-6 with improved styling.

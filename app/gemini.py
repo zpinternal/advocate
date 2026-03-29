@@ -8,35 +8,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from flask import Blueprint, jsonify, render_template, request
 
 
-router = APIRouter(prefix="/gemini", tags=["gemini"])
+bp = Blueprint("gemini", __name__, url_prefix="/gemini")
 DB_PATH = Path("data/advocate.db")
-
-
-class ConversationCreateRequest(BaseModel):
-    title: str = Field(default="New Conversation", min_length=1)
-
-
-class MessageCreateRequest(BaseModel):
-    message: str = Field(min_length=1)
-    type: str = Field(default="user", pattern="^(user|assistant|system)$")
-
-
-class SendRequest(BaseModel):
-    message: str = Field(min_length=1)
-    conversation_id: int | None = None
-    title: str = "New Conversation"
-    model: str = "gemini-2.0-flash"
-
-
-class TranslateRequest(BaseModel):
-    text: str = Field(min_length=1)
-    target_language: str = Field(min_length=2)
-    source_language: str | None = None
-    model: str = "gemini-2.0-flash"
 
 
 def _db() -> sqlite3.Connection:
@@ -89,19 +65,17 @@ def _create_conversation(title: str) -> int:
         return int(cur.lastrowid)
 
 
-def _conversation_or_404(conversation_id: int) -> sqlite3.Row:
+def _conversation_or_none(conversation_id: int):
     with _db() as conn:
-        row = conn.execute(
+        return conn.execute(
             "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
             (conversation_id,),
         ).fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return row
 
 
 def _add_message(conversation_id: int, message: str, msg_type: str) -> int:
-    _conversation_or_404(conversation_id)
+    if not _conversation_or_none(conversation_id):
+        raise LookupError("Conversation not found")
     now = _now_iso()
     with _db() as conn:
         cur = conn.execute(
@@ -118,20 +92,13 @@ def _add_message(conversation_id: int, message: str, msg_type: str) -> int:
 def _call_gemini_text(prompt: str, model: str) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Set GEMINI_API_KEY to enable Gemini model calls",
-        )
+        raise RuntimeError("Set GEMINI_API_KEY to enable Gemini model calls")
 
-    url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        f"?key={api_key}"
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.2},
     }
-
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
@@ -144,131 +111,280 @@ def _call_gemini_text(prompt: str, model: str) -> str:
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        raise HTTPException(status_code=502, detail=f"Gemini API HTTP error: {detail}")
+        raise RuntimeError(f"Gemini API HTTP error: {detail}")
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Gemini API call failed: {exc}")
+        raise RuntimeError(f"Gemini API call failed: {exc}")
 
     candidates = body.get("candidates") or []
     if not candidates:
-        raise HTTPException(status_code=502, detail="Gemini returned no candidates")
-
+        raise RuntimeError("Gemini returned no candidates")
     parts = candidates[0].get("content", {}).get("parts", [])
-    text_chunks = [p.get("text", "") for p in parts if p.get("text")]
-    response_text = "\n".join(text_chunks).strip()
+    response_text = "\n".join(
+        [p.get("text", "") for p in parts if p.get("text")]
+    ).strip()
     if not response_text:
-        raise HTTPException(status_code=502, detail="Gemini response was empty")
+        raise RuntimeError("Gemini response was empty")
     return response_text
 
 
-@router.post("/conversations")
-def create_conversation(payload: ConversationCreateRequest):
-    conversation_id = _create_conversation(payload.title)
-    return {"ok": True, "data": {"conversation_id": conversation_id}}
+@bp.get("/ui")
+def gemini_ui():
+    return render_template("gemini/dashboard.html", title="Gemini Assistant")
 
 
-@router.get("/conversations")
+@bp.post("/conversations")
+def create_conversation():
+    payload = request.get_json(silent=True) or {}
+    title = str(payload.get("title", "New Conversation")).strip() or "New Conversation"
+    return jsonify(
+        {"ok": True, "data": {"conversation_id": _create_conversation(title)}}
+    )
+
+
+@bp.get("/conversations")
 def list_conversations():
     with _db() as conn:
         rows = conn.execute(
             "SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC"
         ).fetchall()
-
-    return {
-        "ok": True,
-        "data": [
-            {
-                "id": int(row["id"]),
-                "title": row["title"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-            for row in rows
-        ],
-    }
-
-
-@router.post("/conversations/{conversation_id}/messages")
-def add_message(conversation_id: int, payload: MessageCreateRequest):
-    message_id = _add_message(conversation_id, payload.message, payload.type)
-    return {
-        "ok": True,
-        "data": {
-            "conversation_id": conversation_id,
-            "message_id": message_id,
-            "type": payload.type,
-        },
-    }
+    return jsonify(
+        {
+            "ok": True,
+            "data": [
+                {
+                    "id": int(r["id"]),
+                    "title": r["title"],
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                }
+                for r in rows
+            ],
+        }
+    )
 
 
-@router.get("/conversations/{conversation_id}/messages")
-def list_messages(conversation_id: int, after_id: int = 0):
-    _conversation_or_404(conversation_id)
+@bp.post("/conversations/<int:conversation_id>/messages")
+def add_message(conversation_id: int):
+    payload = request.get_json(silent=True) or {}
+    msg = str(payload.get("message", "")).strip()
+    msg_type = str(payload.get("type", "user")).strip()
+    if not msg or msg_type not in {"user", "assistant", "system"}:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "message and valid type are required",
+                    },
+                }
+            ),
+            422,
+        )
+    try:
+        mid = _add_message(conversation_id, msg, msg_type)
+    except LookupError:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Conversation not found"},
+                }
+            ),
+            404,
+        )
+    return jsonify(
+        {
+            "ok": True,
+            "data": {
+                "conversation_id": conversation_id,
+                "message_id": mid,
+                "type": msg_type,
+            },
+        }
+    )
+
+
+@bp.get("/conversations/<int:conversation_id>/messages")
+def list_messages(conversation_id: int):
+    if not _conversation_or_none(conversation_id):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Conversation not found"},
+                }
+            ),
+            404,
+        )
+    after_id = int(request.args.get("after_id", "0"))
     with _db() as conn:
         rows = conn.execute(
-            """
-            SELECT id, conv_id, message, type, created_at
-            FROM messages
-            WHERE conv_id = ? AND id > ?
-            ORDER BY id ASC
-            """,
+            "SELECT id, conv_id, message, type, created_at FROM messages WHERE conv_id = ? AND id > ? ORDER BY id ASC",
             (conversation_id, after_id),
         ).fetchall()
-
     messages = [
         {
-            "id": int(row["id"]),
-            "conversation_id": int(row["conv_id"]),
-            "message": row["message"],
-            "type": row["type"],
-            "created_at": row["created_at"],
+            "id": int(r["id"]),
+            "conversation_id": int(r["conv_id"]),
+            "message": r["message"],
+            "type": r["type"],
+            "created_at": r["created_at"],
         }
-        for row in rows
+        for r in rows
     ]
-    return {"ok": True, "data": {"messages": messages}}
+    return jsonify({"ok": True, "data": {"messages": messages}})
 
 
-@router.get("/sync")
-def sync_messages(conversation_id: int, last_saved_message_id: int = 0):
-    return list_messages(
-        conversation_id=conversation_id, after_id=last_saved_message_id
+@bp.get("/sync")
+def sync_messages():
+    conversation_id = int(request.args.get("conversation_id", "0"))
+    last_saved = int(request.args.get("last_saved_message_id", "0"))
+    if not conversation_id:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "conversation_id is required",
+                    },
+                }
+            ),
+            422,
+        )
+    if not _conversation_or_none(conversation_id):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Conversation not found"},
+                }
+            ),
+            404,
+        )
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, conv_id, message, type, created_at FROM messages WHERE conv_id = ? AND id > ? ORDER BY id ASC",
+            (conversation_id, last_saved),
+        ).fetchall()
+    messages = [
+        {
+            "id": int(r["id"]),
+            "conversation_id": int(r["conv_id"]),
+            "message": r["message"],
+            "type": r["type"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+    return jsonify({"ok": True, "data": {"messages": messages}})
+
+
+@bp.post("/chat/send")
+def send_chat():
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message", "")).strip()
+    if not message:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "message is required",
+                    },
+                }
+            ),
+            422,
+        )
+
+    conversation_id = payload.get("conversation_id")
+    title = str(payload.get("title", "New Conversation"))
+    model = str(payload.get("model", "gemini-2.0-flash"))
+    if not conversation_id:
+        conversation_id = _create_conversation(title)
+    try:
+        user_message_id = _add_message(int(conversation_id), message, "user")
+        assistant_text = _call_gemini_text(message, model)
+        assistant_message_id = _add_message(
+            int(conversation_id), assistant_text, "assistant"
+        )
+    except LookupError:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Conversation not found"},
+                }
+            ),
+            404,
+        )
+    except RuntimeError as exc:
+        return (
+            jsonify(
+                {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(exc)}}
+            ),
+            502,
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": {
+                "conversation_id": int(conversation_id),
+                "user_message_id": user_message_id,
+                "assistant_message_id": assistant_message_id,
+                "assistant_message": assistant_text,
+                "model": model,
+            },
+        }
     )
 
 
-@router.post("/chat/send")
-def send_chat(payload: SendRequest):
-    conversation_id = payload.conversation_id or _create_conversation(payload.title)
+@bp.post("/translate")
+def translate():
+    payload = request.get_json(silent=True) or {}
+    text = str(payload.get("text", "")).strip()
+    target = str(payload.get("target_language", "")).strip()
+    source = str(payload.get("source_language", "auto")).strip() or "auto"
+    model = str(payload.get("model", "gemini-2.0-flash"))
+    if not text or len(target) < 2:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "text and target_language are required",
+                    },
+                }
+            ),
+            422,
+        )
 
-    user_message_id = _add_message(conversation_id, payload.message, "user")
-    assistant_text = _call_gemini_text(payload.message, payload.model)
-    assistant_message_id = _add_message(conversation_id, assistant_text, "assistant")
-
-    return {
-        "ok": True,
-        "data": {
-            "conversation_id": conversation_id,
-            "user_message_id": user_message_id,
-            "assistant_message_id": assistant_message_id,
-            "assistant_message": assistant_text,
-            "model": payload.model,
-        },
-    }
-
-
-@router.post("/translate")
-def translate(payload: TranslateRequest):
-    source = payload.source_language or "auto"
     prompt = (
         "Translate the following text. Return only the translated text without explanation. "
-        f"Source language: {source}. Target language: {payload.target_language}. "
-        f"Text: {payload.text}"
+        f"Source language: {source}. Target language: {target}. Text: {text}"
     )
-    translated = _call_gemini_text(prompt, payload.model)
-    return {
-        "ok": True,
-        "data": {
-            "translated_text": translated,
-            "source_language": source,
-            "target_language": payload.target_language,
-            "model": payload.model,
-        },
-    }
+    try:
+        translated = _call_gemini_text(prompt, model)
+    except RuntimeError as exc:
+        return (
+            jsonify(
+                {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(exc)}}
+            ),
+            502,
+        )
+
+    return jsonify(
+        {
+            "ok": True,
+            "data": {
+                "translated_text": translated,
+                "source_language": source,
+                "target_language": target,
+                "model": model,
+            },
+        }
+    )

@@ -2,19 +2,14 @@
 {% block content %}
 <section>
   <h1>Welcome, {{ username }}</h1>
-  <p>Use the shared navigation to move between modules.</p>
+  <p>Flask-based operations workspace for milestones 2-6.</p>
 </section>
 
 <section class="grid">
-  <article class="card">
-    <h2>ZLink Usage</h2>
-    <p>Track hourly usage by server and refresh latest release artifacts.</p>
-    <a href="/zlink/dashboard">Open dashboard</a>
-  </article>
-  <article class="card">
-    <h2>API Status</h2>
-    <p>Validate the current session and application status.</p>
-    <a href="/api/me">View /api/me</a>
-  </article>
+  <article class="card"><h2>ZLink Usage</h2><p>Usage trends and release fetch.</p><a href="/zlink/dashboard">Open ZLink</a></article>
+  <article class="card"><h2>File Explorer</h2><p>Browse, create, rename, upload/download, archive/compress.</p><a href="/files/ui">Open Files</a></article>
+  <article class="card"><h2>Terminal</h2><p>Run shell commands with bounded timeout and output.</p><a href="/terminal/ui">Open Terminal</a></article>
+  <article class="card"><h2>FTP Viewer</h2><p>Login, browse, transfer, archive-download workflows.</p><a href="/ftp/ui">Open FTP</a></article>
+  <article class="card"><h2>Gemini</h2><p>Conversation persistence, chat send and translation.</p><a href="/gemini/ui">Open Gemini</a></article>
 </section>
 {% endblock %}
