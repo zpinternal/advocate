@@ -1,0 +1,20 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section>
+  <h1>Welcome, {{ username }}</h1>
+  <p>Use the shared navigation to move between modules.</p>
+</section>
+
+<section class="grid">
+  <article class="card">
+    <h2>ZLink Usage</h2>
+    <p>Track hourly usage by server and refresh latest release artifacts.</p>
+    <a href="/zlink/dashboard">Open dashboard</a>
+  </article>
+  <article class="card">
+    <h2>API Status</h2>
+    <p>Validate the current session and application status.</p>
+    <a href="/api/me">View /api/me</a>
+  </article>
+</section>
+{% endblock %}

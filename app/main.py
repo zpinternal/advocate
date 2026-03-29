@@ -1,12 +1,13 @@
 import hmac
 import os
-from base64 import b64decode
+import secrets
 from pathlib import Path
-from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Form, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.files import router as files_router
 from app.gemini import init_db as init_gemini_db
@@ -17,10 +18,11 @@ from app.terminal import router as terminal_router
 from app.zlink import init_db, router as zlink_router
 
 
-app = FastAPI(title="Advocate", version="0.6.1")
+APP_VERSION = "0.7.0"
+app = FastAPI(title="Advocate", version=APP_VERSION)
+templates = Jinja2Templates(directory="templates")
 
-
-PUBLIC_PATHS = {"/health"}
+PUBLIC_PATH_PREFIXES = ("/health", "/login", "/static")
 
 
 class AuthConfigError(RuntimeError):
@@ -37,61 +39,26 @@ def get_expected_credentials() -> tuple[str, str]:
     return user, password
 
 
-def parse_basic_auth(authorization_header: Optional[str]) -> tuple[str, str]:
-    if not authorization_header:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+def _wants_html(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept.lower()
 
-    try:
-        scheme, encoded = authorization_header.split(" ", 1)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Malformed Authorization header",
-            headers={"WWW-Authenticate": "Basic"},
-        ) from exc
 
-    if scheme.lower() != "basic":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unsupported auth scheme",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
-    try:
-        decoded = b64decode(encoded).decode("utf-8")
-        username, password = decoded.split(":", 1)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Basic auth credentials",
-            headers={"WWW-Authenticate": "Basic"},
-        ) from exc
-
-    return username, password
+def _is_public_path(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in PUBLIC_PATH_PREFIXES
+    )
 
 
 @app.middleware("http")
-async def basic_auth_guard(request: Request, call_next):
-    if request.url.path in PUBLIC_PATHS:
+async def session_auth_guard(request: Request, call_next):
+    path = request.url.path
+    if _is_public_path(path):
         return await call_next(request)
 
     try:
-        expected_user, expected_password = get_expected_credentials()
-        username, password = parse_basic_auth(request.headers.get("Authorization"))
-    except HTTPException as exc:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "ok": False,
-                "error": {"code": "UNAUTHORIZED", "message": str(exc.detail)},
-            },
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
+        get_expected_credentials()
     except AuthConfigError as exc:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -101,20 +68,25 @@ async def basic_auth_guard(request: Request, call_next):
             },
         )
 
-    user_ok = hmac.compare_digest(username, expected_user)
-    pass_ok = hmac.compare_digest(password, expected_password)
+    if request.session.get("authenticated"):
+        return await call_next(request)
 
-    if not (user_ok and pass_ok):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={
-                "ok": False,
-                "error": {"code": "UNAUTHORIZED", "message": "Invalid credentials"},
-            },
-            headers={"WWW-Authenticate": "Basic"},
+    if _wants_html(request):
+        login_redirect = f"/login?next={path}"
+        return RedirectResponse(
+            url=login_redirect, status_code=status.HTTP_303_SEE_OTHER
         )
 
-    return await call_next(request)
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={
+            "ok": False,
+            "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Login required. Use /login for session authentication.",
+            },
+        },
+    )
 
 
 @app.on_event("startup")
@@ -122,7 +94,17 @@ def startup() -> None:
     init_db()
     init_gemini_db()
     Path("static").mkdir(parents=True, exist_ok=True)
+    Path("templates").mkdir(parents=True, exist_ok=True)
 
+
+session_secret = os.getenv("ADVOCATE_SESSION_SECRET") or secrets.token_hex(32)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=session_secret,
+    same_site="lax",
+    https_only=False,
+    max_age=60 * 60 * 8,
+)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(zlink_router)
@@ -138,9 +120,81 @@ def health():
     return {"ok": True, "status": "healthy"}
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/login", include_in_schema=False)
+def login_page(request: Request, next: str = "/dashboard"):
+    if request.session.get("authenticated"):
+        return RedirectResponse(url=next, status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(
+        "core/login.html",
+        {
+            "request": request,
+            "title": "Login",
+            "next_path": next,
+            "error": None,
+        },
+    )
+
+
+@app.post("/login", include_in_schema=False)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/dashboard"),
+):
+    expected_user, expected_password = get_expected_credentials()
+    user_ok = hmac.compare_digest(username, expected_user)
+    pass_ok = hmac.compare_digest(password, expected_password)
+
+    if not (user_ok and pass_ok):
+        return templates.TemplateResponse(
+            "core/login.html",
+            {
+                "request": request,
+                "title": "Login",
+                "next_path": next,
+                "error": "Invalid username or password.",
+            },
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    request.session.update({"authenticated": True, "username": username})
+    return RedirectResponse(
+        url=next or "/dashboard", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@app.post("/logout", include_in_schema=False)
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard(request: Request):
+    return templates.TemplateResponse(
+        "core/dashboard.html",
+        {
+            "request": request,
+            "title": "Dashboard",
+            "username": request.session.get("username", "user"),
+        },
+    )
+
+
 @app.get("/api/me")
-def me():
+def me(request: Request):
     return {
         "ok": True,
-        "data": {"module": "core", "auth": "enabled", "version": "0.6.1"},
+        "data": {
+            "module": "core",
+            "auth": "session",
+            "version": APP_VERSION,
+            "user": request.session.get("username"),
+        },
     }

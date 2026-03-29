@@ -1,7 +1,7 @@
 # DESIGN
 
 ## Current Architecture
-- FastAPI service with middleware-based Basic auth.
+- FastAPI service with middleware-based session authentication and form-based login.
 - SQLite local persistence in `data/advocate.db` for ZLink usage metrics.
 - Static artifacts served from `/static`.
 - In-process background `TaskManager` for async file operations.
@@ -29,7 +29,7 @@
 - `POST /ftp/upload-extract`, `POST /ftp/archive-download` for bundled workflows.
 
 ## Security
-- Only `/health` is public; all module routes require Basic auth via env credentials.
+- Public routes: `/health`, `/login`, and static assets. Other routes require a valid authenticated session created from env-backed credentials via the login page.
 - File and terminal path handling is constrained to startup base path.
 - FTP endpoints require valid in-memory session IDs from authenticated login flow.
 
@@ -38,3 +38,10 @@
 - Sync flow supports incremental retrieval with `id > last_saved_message_id`.
 - Gemini-backed chat/translation routes call Google Generative Language API when `GEMINI_API_KEY` is configured.
 - Auth middleware converts auth parsing failures into structured 401 JSON responses to avoid uncaught exception groups.
+
+
+## Milestone 7 (Session Login + Shared UI)
+- Replaced HTTP Basic middleware with cookie-backed session auth using `SessionMiddleware`.
+- Added form-based login/logout (`/login`, `/logout`) and root redirect to `/dashboard`.
+- Added shared navigation layout template and module cards for improved UI/UX.
+- Migrated ZLink dashboard HTML into templates to reuse shared layout/navigation.

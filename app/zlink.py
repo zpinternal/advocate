@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 
@@ -31,6 +31,7 @@ class UsageItem(BaseModel):
 
 
 router = APIRouter(prefix="/zlink", tags=["zlink"])
+templates = Jinja2Templates(directory="templates")
 
 
 def _db() -> sqlite3.Connection:
@@ -128,101 +129,12 @@ def usage_timeseries():
     }
 
 
-@router.get("/dashboard", response_class=HTMLResponse)
-def dashboard() -> str:
-    return """
-<!doctype html>
-<html>
-<head>
-  <meta charset='utf-8'>
-  <title>ZLink Usage Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 24px; }
-    #chart { border: 1px solid #ccc; width: 100%; height: 420px; }
-    .legend { margin-top: 10px; }
-  </style>
-</head>
-<body>
-  <h1>ZLink Usage Dashboard</h1>
-  <p>Usage (bytes) over time per server.</p>
-  <svg id="chart" viewBox="0 0 1000 420"></svg>
-  <div id="legend" class="legend"></div>
-
-  <script>
-    const colors = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2"];
-
-    function draw(data) {
-      const svg = document.getElementById("chart");
-      const legend = document.getElementById("legend");
-      svg.innerHTML = "";
-      legend.innerHTML = "";
-
-      const entries = Object.entries(data);
-      if (entries.length === 0) {
-        svg.innerHTML = "<text x='20' y='40'>No data yet.</text>";
-        return;
-      }
-
-      const allPoints = entries.flatMap(([_, points]) => points);
-      const ys = allPoints.map(p => p.bytes);
-      const minY = Math.min(...ys);
-      const maxY = Math.max(...ys);
-
-      const xPadding = 60;
-      const yPadding = 30;
-      const width = 1000 - xPadding * 2;
-      const height = 420 - yPadding * 2;
-
-      const allTs = [...new Set(allPoints.map(p => p.ts_hour))].sort();
-      const xMap = new Map(allTs.map((ts, i) => [ts, i]));
-      const xScale = (idx) => xPadding + (idx / Math.max(allTs.length - 1, 1)) * width;
-      const yScale = (v) => yPadding + (maxY === minY ? height / 2 : (1 - ((v - minY) / (maxY - minY))) * height);
-
-      const axis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      axis.setAttribute("x1", xPadding);
-      axis.setAttribute("x2", xPadding);
-      axis.setAttribute("y1", yPadding);
-      axis.setAttribute("y2", yPadding + height);
-      axis.setAttribute("stroke", "#777");
-      svg.appendChild(axis);
-
-      const axisX = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      axisX.setAttribute("x1", xPadding);
-      axisX.setAttribute("x2", xPadding + width);
-      axisX.setAttribute("y1", yPadding + height);
-      axisX.setAttribute("y2", yPadding + height);
-      axisX.setAttribute("stroke", "#777");
-      svg.appendChild(axisX);
-
-      entries.forEach(([server, points], idx) => {
-        const color = colors[idx % colors.length];
-        const ordered = [...points].sort((a,b) => a.ts_hour.localeCompare(b.ts_hour));
-        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
-        const coords = ordered
-          .map(p => `${xScale(xMap.get(p.ts_hour))},${yScale(p.bytes)}`)
-          .join(" ");
-        poly.setAttribute("points", coords);
-        poly.setAttribute("fill", "none");
-        poly.setAttribute("stroke", color);
-        poly.setAttribute("stroke-width", "2");
-        svg.appendChild(poly);
-
-        const item = document.createElement("div");
-        item.innerHTML = `<span style="display:inline-block;width:12px;height:12px;background:${color};margin-right:8px;"></span>${server}`;
-        legend.appendChild(item);
-      });
-    }
-
-    fetch('/zlink/metrics/usage')
-      .then(r => r.json())
-      .then(r => draw(r.data || {}))
-      .catch(() => {
-        document.getElementById('chart').innerHTML = "<text x='20' y='40'>Failed to load data.</text>";
-      });
-  </script>
-</body>
-</html>
-    """
+@router.get("/dashboard")
+def dashboard(request: Request):
+    return templates.TemplateResponse(
+        "zlink/dashboard.html",
+        {"request": request, "title": "ZLink Usage Dashboard"},
+    )
 
 
 def _read_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:

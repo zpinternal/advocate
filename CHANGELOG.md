@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## 0.7.0 - 2026-03-29 12:16:43 GMT+3
+- Implemented Milestone 7 session-based auth and UI refresh:
+  - Replaced HTTP Basic middleware with cookie-backed session authentication using `SessionMiddleware`.
+  - Added login/logout workflow and HTML pages (`GET/POST /login`, `POST /logout`) plus root redirect to `/dashboard`.
+  - Added shared base navigation template and new dashboard page for improved module navigation UX.
+  - Migrated ZLink dashboard to template-based rendering so it uses shared UI chrome.
+- Added `jinja2` dependency for template rendering and bumped version from `0.6.1` to `0.7.0`.
+
 ## 0.6.1 - 2026-03-29 12:00:30 GMT+3
 - Fixed auth middleware to return JSON 401 responses when Authorization is missing/malformed instead of bubbling `HTTPException` and causing a 500 error in middleware handling.
 - Bumped version from `0.6.0` to `0.6.1`.
