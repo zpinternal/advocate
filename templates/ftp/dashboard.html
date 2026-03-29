@@ -1,5 +1,58 @@
 {% extends "core/base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="/static/ftp/dashboard.css" />
+{% endblock %}
 {% block content %}
-<h1>FTP Viewer</h1>
-<div class="card"><p>Use JSON API endpoints to login and browse.</p><code>POST /ftp/login</code><br/><code>GET /ftp/browse?session_id=...</code></div>
+<h1>FTP Explorer</h1>
+<div class="ftp-layout">
+  <section class="card">
+    <h3>Connection</h3>
+    <div class="row">
+      <input id="host" placeholder="Host" />
+      <input id="port" type="number" value="21" />
+      <input id="username" placeholder="Username" />
+      <input id="password" type="password" placeholder="Password" />
+    </div>
+    <div class="row">
+      <label><input id="useSsl" type="checkbox" /> FTPS (TLS)</label>
+      <label><input id="passive" type="checkbox" checked /> Passive mode</label>
+      <button id="loginBtn" type="button">Login + Save in Session</button>
+      <button id="restoreBtn" type="button">Restore Saved Session</button>
+    </div>
+    <div class="row">
+      <input id="browsePath" value="." />
+      <button id="browseBtn" type="button">Browse</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 id="cwdLabel">Remote listing</h3>
+    <table id="ftpTable">
+      <thead><tr><th>Name</th><th>Path</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h3>Transfers</h3>
+    <div class="row">
+      <input id="remoteUploadPath" placeholder="remote/path/file.bin" />
+      <input id="uploadFile" type="file" />
+      <button id="uploadBtn" type="button">Upload</button>
+    </div>
+    <div class="row">
+      <input id="archivePath" placeholder="remote/path/file.bin" />
+      <input id="archiveName" placeholder="archive.tar" />
+      <button id="archiveBtn" type="button">Archive Download</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>API response</h3>
+    <pre id="apiOut"></pre>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/ftp/dashboard.js"></script>
 {% endblock %}

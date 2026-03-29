@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 0.9.0 - 2026-03-29 13:10:02 GMT+3
+- Implemented GUI-first File Explorer experience for all existing file APIs (list, navigation, create, rename, upload, download, archive/compress with task polling).
+- Rebuilt Terminal UI using vendored xterm.js + fit addon assets for accurate terminal rendering while keeping command execution via `/terminal/exec`.
+- Implemented FTP Explorer GUI for login/browse/upload/download/archive-download and added backend support for restoring active FTP credentials from Flask session state.
+- Added per-module static assets under `static/files`, `static/terminal`, `static/ftp`, and vendored xterm assets under `static/vendors/xterm` for no-network UI runtime.
+- Bumped version from `0.8.0` to `0.9.0`.
+
 ## 0.7.0 - 2026-03-29 12:16:43 GMT+3
 - Implemented Milestone 7 session-based auth and UI refresh:
   - Replaced HTTP Basic middleware with cookie-backed session authentication using `SessionMiddleware`.

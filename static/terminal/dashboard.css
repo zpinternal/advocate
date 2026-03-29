@@ -1,0 +1,7 @@
+.terminal-shell { display: grid; gap: 10px; }
+.toolbar, .command-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.toolbar input, .command-row input { padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.toolbar button, .command-row button { padding: 8px 12px; border: 0; border-radius: 8px; background: #1d4ed8; color: white; cursor: pointer; }
+#terminalView { width: 100%; height: 420px; border-radius: 10px; overflow: hidden; background: #0b1324; }
+.command-row .prompt { font-weight: 700; }
+.command-row #commandInput { flex: 1; min-width: 280px; }

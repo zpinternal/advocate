@@ -14,7 +14,7 @@ from app.terminal import bp as terminal_bp
 from app.zlink import bp as zlink_bp
 from app.zlink import init_db as init_zlink_db
 
-APP_VERSION = "0.8.0"
+APP_VERSION = "0.9.0"
 PUBLIC_PATH_PREFIXES = ("/health", "/login", "/static")
 
 

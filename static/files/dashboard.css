@@ -1,0 +1,10 @@
+.explorer-layout { display: grid; gap: 14px; }
+.controls .row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.controls input, .controls select { min-width: 180px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.controls button { padding: 8px 10px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; }
+.listing { width: 100%; border-collapse: collapse; }
+.listing th, .listing td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: 8px; }
+.listing td .actions { display: flex; gap: 8px; }
+.listing td button, .listing td a { font-size: 0.9rem; }
+.linkish { color: #1d4ed8; text-decoration: underline; cursor: pointer; background: none; border: 0; padding: 0; }
+.small-btn { border: 0; background: #334155; color: white; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-decoration: none; }

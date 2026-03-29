@@ -1,11 +1,28 @@
 {% extends "core/base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="/static/vendors/xterm/xterm.css" />
+<link rel="stylesheet" href="/static/terminal/dashboard.css" />
+{% endblock %}
 {% block content %}
 <h1>Terminal</h1>
-<div class="card">
-  <input id="cmd" placeholder="pwd" /> <button onclick="runCmd()">Run</button>
-  <pre id="out"></pre>
+<div class="card terminal-shell">
+  <div class="toolbar">
+    <label>Working directory</label>
+    <input id="cwdInput" value="." />
+    <label>Timeout (sec)</label>
+    <input id="timeoutInput" type="number" min="1" max="300" value="20" />
+    <button id="clearBtn" type="button">Clear</button>
+  </div>
+  <div id="terminalView"></div>
+  <div class="command-row">
+    <span class="prompt">$</span>
+    <input id="commandInput" placeholder="Type command and press Enter" />
+    <button id="runBtn" type="button">Run</button>
+  </div>
 </div>
-<script>
-async function runCmd(){const command=document.getElementById('cmd').value;const r=await fetch('/terminal/exec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}
-</script>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendors/xterm/xterm.js"></script>
+<script src="/static/vendors/xterm/addon-fit.js"></script>
+<script src="/static/terminal/dashboard.js"></script>
 {% endblock %}
