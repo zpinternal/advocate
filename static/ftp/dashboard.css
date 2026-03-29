@@ -1,0 +1,7 @@
+.ftp-layout { display: grid; gap: 14px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+.row input { min-width: 170px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.row button { padding: 8px 10px; border: 0; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; }
+#ftpTable { width: 100%; border-collapse: collapse; }
+#ftpTable th, #ftpTable td { text-align: left; border-bottom: 1px solid #e2e8f0; padding: 8px; }
+.small-btn { border: 0; background: #334155; color: white; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-decoration: none; margin-right: 6px; }

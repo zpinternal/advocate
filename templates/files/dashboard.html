@@ -1,9 +1,60 @@
 {% extends "core/base.html" %}
+{% block head_extra %}
+<link rel="stylesheet" href="/static/files/dashboard.css" />
+{% endblock %}
 {% block content %}
 <h1>File Explorer</h1>
-<div class="card"><input id="path" value="."/><button onclick="loadItems()">List</button><pre id="out"></pre></div>
-<script>
-async function loadItems(){const p=document.getElementById('path').value;const r=await fetch('/files/list?path='+encodeURIComponent(p));document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}
-loadItems();
-</script>
+<div class="explorer-layout">
+  <section class="card controls">
+    <div class="row">
+      <label>Current path</label>
+      <input id="pathInput" value="." />
+      <button id="goBtn" type="button">Go</button>
+      <button id="upBtn" type="button">Up</button>
+      <button id="refreshBtn" type="button">Refresh</button>
+    </div>
+    <div class="row">
+      <input id="createName" placeholder="new-name.txt" />
+      <select id="createKind"><option value="file">File</option><option value="dir">Folder</option></select>
+      <button id="createBtn" type="button">Create</button>
+    </div>
+    <div class="row">
+      <input id="renameOld" placeholder="old/path/or/name" />
+      <input id="renameNew" placeholder="new/path/or/name" />
+      <button id="renameBtn" type="button">Rename</button>
+    </div>
+    <div class="row">
+      <input id="archiveSource" placeholder="source path" />
+      <input id="archiveOut" placeholder="archive.tar" />
+      <button id="archiveBtn" type="button">Archive (.tar)</button>
+      <button id="compressBtn" type="button">Compress (.zip)</button>
+    </div>
+    <div class="row">
+      <input id="uploadDir" placeholder="upload target dir" />
+      <input id="uploadFile" type="file" />
+      <button id="uploadBtn" type="button">Upload</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3 id="cwdLabel">Current directory</h3>
+    <table class="listing" id="itemsTable">
+      <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h3>Task status</h3>
+    <pre id="tasksOut">No async tasks started.</pre>
+  </section>
+
+  <section class="card">
+    <h3>API result</h3>
+    <pre id="apiOut"></pre>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/files/dashboard.js"></script>
 {% endblock %}
