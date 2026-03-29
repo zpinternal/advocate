@@ -21,6 +21,7 @@ Runtime dependencies are listed in `requirements.txt` and are auto-installed by 
 - Milestone 3: File Explorer AJAX APIs and async task framework for archive/compress.
 - Milestone 4: Terminal APIs via AJAX and WebSocket.
 - Milestone 5: FTP viewer (login, browse, upload/download, archive/compress/extract, combined workflows).
+- Milestone 6: Gemini module foundations (conversation/message persistence, sync by message ID, Gemini chat send, translation endpoint).
 
 ## Key Endpoints
 - `GET /health`
@@ -51,6 +52,13 @@ Runtime dependencies are listed in `requirements.txt` and are auto-installed by 
 - `POST /ftp/extract`
 - `POST /ftp/upload-extract`
 - `POST /ftp/archive-download`
+- `POST /gemini/conversations`
+- `GET /gemini/conversations`
+- `POST /gemini/conversations/{conversation_id}/messages`
+- `GET /gemini/conversations/{conversation_id}/messages`
+- `GET /gemini/sync`
+- `POST /gemini/chat/send`
+- `POST /gemini/translate`
 
 ## Version
-Current version: `0.5.0`.
+Current version: `0.6.1`.

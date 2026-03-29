@@ -10,3 +10,6 @@
 - 2026-03-29: Playwright still unavailable (`No module named playwright`), so UI automation for milestone 4 could not run.
 - 2026-03-29: Implemented Milestone 5 FTP viewer module with login, browse, transfer, archive/compress/extract, and combined endpoints.
 - 2026-03-29: Re-attempted dependency/tool setup for milestone 5; `pip install -r requirements.txt` still blocked by proxy restrictions and Playwright remains unavailable.
+- 2026-03-29: Implemented Milestone 6 Gemini foundations (conversation/message persistence, sync endpoint, chat send, translation).
+- 2026-03-29: Fixed middleware auth exception handling so missing Authorization now returns 401 JSON instead of 500 on deployment.
+- 2026-03-29: Could not run FastAPI TestClient runtime check in this container because `fastapi` package is not installed locally.

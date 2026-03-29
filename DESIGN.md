@@ -32,3 +32,9 @@
 - Only `/health` is public; all module routes require Basic auth via env credentials.
 - File and terminal path handling is constrained to startup base path.
 - FTP endpoints require valid in-memory session IDs from authenticated login flow.
+
+## Milestone 6 (Gemini foundations)
+- Conversations and messages are persisted in SQLite (`conversations`, `messages`).
+- Sync flow supports incremental retrieval with `id > last_saved_message_id`.
+- Gemini-backed chat/translation routes call Google Generative Language API when `GEMINI_API_KEY` is configured.
+- Auth middleware converts auth parsing failures into structured 401 JSON responses to avoid uncaught exception groups.

@@ -12,3 +12,6 @@
 - Upgrade WebSocket terminal from command-per-message to full PTY streaming for richer shell parity.
 - Add recursive FTP directory upload/download and remote directory creation handling.
 - Move FTP session storage to encrypted persistence with TTL cleanup.
+- Add Gemini image generation preview/full-download workflow and TTS-to-opus conversion endpoints.
+- Add integration tests covering missing/invalid auth header behavior across middleware-protected routes.
+
