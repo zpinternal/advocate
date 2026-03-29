@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -20,6 +20,9 @@ class TaskRecord:
     message: str = ""
     result: dict[str, Any] = field(default_factory=dict)
     error: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 class TaskManager:

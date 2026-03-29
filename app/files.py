@@ -1,85 +1,85 @@
 from __future__ import annotations
 
 import os
-import shutil
 import tarfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from flask import Blueprint, jsonify, render_template, request, send_file
 
 from app.tasks import TASK_MANAGER
 
 
-router = APIRouter(prefix="/files", tags=["files"])
-
+bp = Blueprint("files", __name__, url_prefix="/files")
 
 BASE_DIR = Path.cwd().resolve()
 CURRENT_DIR = BASE_DIR
 
 
+def _error(status: int, code: str, message: str):
+    return jsonify({"ok": False, "error": {"code": code, "message": message}}), status
+
+
 def _safe_path(path: str) -> Path:
     global CURRENT_DIR
-
     requested = (
         (CURRENT_DIR / path).resolve()
         if not Path(path).is_absolute()
         else Path(path).resolve()
     )
     if not str(requested).startswith(str(BASE_DIR)):
-        raise HTTPException(status_code=400, detail="Path escapes base directory")
+        raise ValueError("Path escapes base directory")
     return requested
 
 
-class ChdirRequest(BaseModel):
-    path: str = Field(min_length=1)
+@bp.get("/ui")
+def files_ui():
+    return render_template("files/dashboard.html", title="File Explorer")
 
 
-class RenameRequest(BaseModel):
-    old_path: str = Field(min_length=1)
-    new_path: str = Field(min_length=1)
-
-
-class CreateRequest(BaseModel):
-    path: str = Field(min_length=1)
-    kind: str = Field(pattern="^(file|dir)$")
-
-
-class ArchiveRequest(BaseModel):
-    source_path: str = Field(min_length=1)
-    output_name: str = Field(min_length=1)
-
-
-@router.get("/cwd")
+@bp.get("/cwd")
 def cwd_info():
-    return {"ok": True, "data": {"base_dir": str(BASE_DIR), "cwd": str(CURRENT_DIR)}}
+    return jsonify(
+        {"ok": True, "data": {"base_dir": str(BASE_DIR), "cwd": str(CURRENT_DIR)}}
+    )
 
 
-@router.post("/chdir")
-def chdir(payload: ChdirRequest):
+@bp.post("/chdir")
+def chdir():
     global CURRENT_DIR
+    payload = request.get_json(silent=True) or {}
+    path = str(payload.get("path", "")).strip()
+    if not path:
+        return _error(422, "VALIDATION_ERROR", "path is required")
 
-    new_dir = _safe_path(payload.path)
+    try:
+        new_dir = _safe_path(path)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
     if not new_dir.exists() or not new_dir.is_dir():
-        raise HTTPException(status_code=404, detail="Directory not found")
+        return _error(404, "NOT_FOUND", "Directory not found")
 
     CURRENT_DIR = new_dir
-    return {"ok": True, "data": {"cwd": str(CURRENT_DIR)}}
+    return jsonify({"ok": True, "data": {"cwd": str(CURRENT_DIR)}})
 
 
-@router.get("/list")
-def list_items(path: str = "."):
-    target = _safe_path(path)
+@bp.get("/list")
+def list_items():
+    path = request.args.get("path", ".")
+    try:
+        target = _safe_path(path)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
     if not target.exists() or not target.is_dir():
-        raise HTTPException(status_code=404, detail="Directory not found")
+        return _error(404, "NOT_FOUND", "Directory not found")
 
-    entries = []
+    items = []
     for item in sorted(
         target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
     ):
-        entries.append(
+        items.append(
             {
                 "name": item.name,
                 "path": str(item),
@@ -88,69 +88,103 @@ def list_items(path: str = "."):
             }
         )
 
-    return {
-        "ok": True,
-        "data": {"cwd": str(CURRENT_DIR), "path": str(target), "items": entries},
-    }
+    return jsonify(
+        {
+            "ok": True,
+            "data": {"cwd": str(CURRENT_DIR), "path": str(target), "items": items},
+        }
+    )
 
 
-@router.post("/create")
-def create_item(payload: CreateRequest):
-    target = _safe_path(payload.path)
+@bp.post("/create")
+def create_item():
+    payload = request.get_json(silent=True) or {}
+    path = str(payload.get("path", "")).strip()
+    kind = payload.get("kind")
+    if not path or kind not in {"file", "dir"}:
+        return _error(422, "VALIDATION_ERROR", "path and kind (file|dir) are required")
+
+    try:
+        target = _safe_path(path)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
     if target.exists():
-        raise HTTPException(status_code=409, detail="Path already exists")
+        return _error(409, "CONFLICT", "Path already exists")
 
-    if payload.kind == "dir":
+    if kind == "dir":
         target.mkdir(parents=True, exist_ok=False)
     else:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.touch(exist_ok=False)
 
-    return {"ok": True, "data": {"path": str(target), "kind": payload.kind}}
+    return jsonify({"ok": True, "data": {"path": str(target), "kind": kind}})
 
 
-@router.post("/rename")
-def rename_item(payload: RenameRequest):
-    old_target = _safe_path(payload.old_path)
-    new_target = _safe_path(payload.new_path)
+@bp.post("/rename")
+def rename_item():
+    payload = request.get_json(silent=True) or {}
+    old_path = str(payload.get("old_path", "")).strip()
+    new_path = str(payload.get("new_path", "")).strip()
+    if not old_path or not new_path:
+        return _error(422, "VALIDATION_ERROR", "old_path and new_path are required")
+
+    try:
+        old_target = _safe_path(old_path)
+        new_target = _safe_path(new_path)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
 
     if not old_target.exists():
-        raise HTTPException(status_code=404, detail="Source path does not exist")
+        return _error(404, "NOT_FOUND", "Source path does not exist")
     if new_target.exists():
-        raise HTTPException(status_code=409, detail="Destination path already exists")
+        return _error(409, "CONFLICT", "Destination path already exists")
 
     old_target.rename(new_target)
-    return {
-        "ok": True,
-        "data": {"old_path": str(old_target), "new_path": str(new_target)},
-    }
+    return jsonify(
+        {"ok": True, "data": {"old_path": str(old_target), "new_path": str(new_target)}}
+    )
 
 
-@router.post("/upload")
-def upload_file(file: UploadFile = File(...), target_dir: str = "."):
-    target = _safe_path(target_dir)
+@bp.post("/upload")
+def upload_file():
+    target_dir = request.form.get("target_dir", ".")
+    file = request.files.get("file")
+    if not file:
+        return _error(422, "VALIDATION_ERROR", "file is required")
+
+    try:
+        target = _safe_path(target_dir)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
     if not target.exists() or not target.is_dir():
-        raise HTTPException(status_code=404, detail="Target directory not found")
+        return _error(404, "NOT_FOUND", "Target directory not found")
 
     output_file = target / file.filename
-    with output_file.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    file.save(output_file)
+    return jsonify(
+        {
+            "ok": True,
+            "data": {"path": str(output_file), "size": output_file.stat().st_size},
+        }
+    )
 
-    return {
-        "ok": True,
-        "data": {"path": str(output_file), "size": output_file.stat().st_size},
-    }
 
+@bp.get("/download")
+def download_file():
+    path = request.args.get("path", "")
+    try:
+        target = _safe_path(path)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
 
-@router.get("/download")
-def download_file(path: str):
-    target = _safe_path(path)
     if not target.exists() or not target.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=target, filename=target.name)
+        return _error(404, "NOT_FOUND", "File not found")
+    return send_file(target, as_attachment=True, download_name=target.name)
 
 
-def _tar_job(progress, source: Path, output_path: Path) -> dict[str, str]:
+def _tar_job(progress, source: Path, output_path: Path):
     progress(20, "Preparing tar archive")
     with tarfile.open(output_path, "w") as tf:
         tf.add(source, arcname=source.name)
@@ -158,7 +192,7 @@ def _tar_job(progress, source: Path, output_path: Path) -> dict[str, str]:
     return {"output_path": str(output_path), "type": "tar"}
 
 
-def _zip_job(progress, source: Path, output_path: Path) -> dict[str, str]:
+def _zip_job(progress, source: Path, output_path: Path):
     progress(20, "Preparing zip archive")
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         if source.is_file():
@@ -173,43 +207,71 @@ def _zip_job(progress, source: Path, output_path: Path) -> dict[str, str]:
     return {"output_path": str(output_path), "type": "zip"}
 
 
-@router.post("/archive")
-def archive(payload: ArchiveRequest):
-    source = _safe_path(payload.source_path)
-    if not source.exists():
-        raise HTTPException(status_code=404, detail="Source path not found")
+@bp.post("/archive")
+def archive():
+    payload = request.get_json(silent=True) or {}
+    source_path = str(payload.get("source_path", "")).strip()
+    output_name = str(payload.get("output_name", "")).strip()
+    if not source_path or not output_name:
+        return _error(
+            422, "VALIDATION_ERROR", "source_path and output_name are required"
+        )
 
-    output = _safe_path(payload.output_name)
+    try:
+        source = _safe_path(source_path)
+        output = _safe_path(output_name)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
+    if not source.exists():
+        return _error(404, "NOT_FOUND", "Source path not found")
+
     if output.suffix != ".tar":
         output = output.with_suffix(".tar")
 
     task = TASK_MANAGER.create_task("files", "archive", _tar_job, source, output)
-    return {
-        "ok": True,
-        "data": {
-            "task_id": task.id,
-            "status": task.status,
-            "status_url": f"/tasks/{task.id}",
-        },
-    }
+    return jsonify(
+        {
+            "ok": True,
+            "data": {
+                "task_id": task.id,
+                "status": task.status,
+                "status_url": f"/tasks/{task.id}",
+            },
+        }
+    )
 
 
-@router.post("/compress")
-def compress(payload: ArchiveRequest):
-    source = _safe_path(payload.source_path)
+@bp.post("/compress")
+def compress():
+    payload = request.get_json(silent=True) or {}
+    source_path = str(payload.get("source_path", "")).strip()
+    output_name = str(payload.get("output_name", "")).strip()
+    if not source_path or not output_name:
+        return _error(
+            422, "VALIDATION_ERROR", "source_path and output_name are required"
+        )
+
+    try:
+        source = _safe_path(source_path)
+        output = _safe_path(output_name)
+    except ValueError as exc:
+        return _error(400, "BAD_PATH", str(exc))
+
     if not source.exists():
-        raise HTTPException(status_code=404, detail="Source path not found")
+        return _error(404, "NOT_FOUND", "Source path not found")
 
-    output = _safe_path(payload.output_name)
     if output.suffix != ".zip":
         output = output.with_suffix(".zip")
 
     task = TASK_MANAGER.create_task("files", "compress", _zip_job, source, output)
-    return {
-        "ok": True,
-        "data": {
-            "task_id": task.id,
-            "status": task.status,
-            "status_url": f"/tasks/{task.id}",
-        },
-    }
+    return jsonify(
+        {
+            "ok": True,
+            "data": {
+                "task_id": task.id,
+                "status": task.status,
+                "status_url": f"/tasks/{task.id}",
+            },
+        }
+    )

@@ -1,23 +1,31 @@
-from fastapi import APIRouter, HTTPException
+from __future__ import annotations
+
+from flask import Blueprint, jsonify
 
 from app.tasks import TASK_MANAGER
 
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+bp = Blueprint("tasks", __name__, url_prefix="/tasks")
 
 
-@router.get("")
+@bp.get("")
 def list_tasks():
-    return {
-        "ok": True,
-        "data": [record.__dict__ for record in TASK_MANAGER.all()],
-    }
+    return jsonify(
+        {"ok": True, "data": [record.to_dict() for record in TASK_MANAGER.all()]}
+    )
 
 
-@router.get("/{task_id}")
+@bp.get("/<task_id>")
 def get_task(task_id: str):
     task = TASK_MANAGER.get(task_id)
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    return {"ok": True, "data": task.__dict__}
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {"code": "NOT_FOUND", "message": "Task not found"},
+                }
+            ),
+            404,
+        )
+    return jsonify({"ok": True, "data": task.to_dict()})

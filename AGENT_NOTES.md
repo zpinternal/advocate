@@ -16,3 +16,4 @@
 - 2026-03-29: Migrated authentication from HTTP Basic to cookie-backed session login pages (`/login`) and introduced shared dashboard/navigation templates.
 - 2026-03-29: Attempted UI automation check with `python -m playwright --version`; Playwright is still unavailable in this environment (`No module named playwright`).
 - 2026-03-29: FastAPI runtime smoke test via `fastapi.testclient` could not run because `fastapi` is not installed in the active Python interpreter.
+- 2026-03-29: Migrated app from FastAPI to Flask and added milestone UI pages for Files, Terminal, FTP, and Gemini modules.

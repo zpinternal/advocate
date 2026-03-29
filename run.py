@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Bootstrap Advocate in ephemeral environments.
-
-Milestone 1 requirements:
-1) install required dependencies if missing,
-2) validate env-based auth credentials,
-3) start the ASGI server.
-"""
+"""Bootstrap Advocate in ephemeral environments."""
 
 import importlib.util
 import os
@@ -15,9 +9,7 @@ import sys
 
 PYTHON_MIN = (3, 11)
 REQUIRED_IMPORTS = {
-    "fastapi": "fastapi",
-    "uvicorn": "uvicorn",
-    "multipart": "python-multipart",
+    "flask": "flask",
     "jinja2": "jinja2",
 }
 
@@ -63,20 +55,11 @@ def ensure_auth_env() -> None:
 
 def start_server() -> None:
     host = os.getenv("ADVOCATE_HOST", "0.0.0.0")
-    port = os.getenv("ADVOCATE_PORT", "8000")
-    print(f"Starting server on {host}:{port}")
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "app.main:app",
-            "--host",
-            host,
-            "--port",
-            str(port),
-        ]
-    )
+    port = int(os.getenv("ADVOCATE_PORT", "8000"))
+    print(f"Starting Flask server on {host}:{port}")
+    from app.main import app
+
+    app.run(host=host, port=port, debug=False)
 
 
 if __name__ == "__main__":

@@ -61,7 +61,7 @@ Runtime dependencies are listed in `requirements.txt` and are auto-installed by 
 - `POST /gemini/translate`
 
 ## Version
-Current version: `0.7.0`.
+Current version: `0.8.0`.
 
 
 ## UI Routes
@@ -69,3 +69,8 @@ Current version: `0.7.0`.
 - `POST /login`
 - `POST /logout`
 - `GET /dashboard`
+
+
+## Flask-based UI
+- `/dashboard` central UX hub for milestones 2-6.
+- `/files/ui`, `/terminal/ui`, `/ftp/ui`, `/gemini/ui` module pages.
