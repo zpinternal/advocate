@@ -41,3 +41,11 @@ static/vendors/<vendor_name>/ # for third party libraries
 
 ## Instructions for AI training
 - Display graphs for training loss, performance and other related information very verbosely.
+
+## User Instruction Mirror
+- If `agents.md` doesn't exist in a project, create it.
+- Include these user instructions in `AGENTS.md` for future agents, and add any missing ones.
+- `AGENT_NOTES.md` must always be read and updated when discovering or being told persistent project context.
+- `BACKLOG.md` must always be appended to while implementing features/fixes.
+- `CHANGELOG.md` must include versioned entries with GMT+3 timestamps.
+- Run linters and formatters after code changes; if lint cannot be fixed, record it in `AGENT_NOTES.md`.

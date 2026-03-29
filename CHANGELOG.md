@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 0.6.1 - 2026-03-29 12:00:30 GMT+3
+- Fixed auth middleware to return JSON 401 responses when Authorization is missing/malformed instead of bubbling `HTTPException` and causing a 500 error in middleware handling.
+- Bumped version from `0.6.0` to `0.6.1`.
+
+## 0.6.0 - 2026-03-29 11:52:18 GMT+3
+- Implemented Milestone 6 Gemini module foundations:
+  - Added local SQLite persistence for conversations/messages with startup initialization.
+  - Added conversation and message APIs (`POST/GET /gemini/conversations`, `POST/GET /gemini/conversations/{conversation_id}/messages`).
+  - Added incremental sync endpoint (`GET /gemini/sync?conversation_id=...&last_saved_message_id=...`).
+  - Added Gemini chat send endpoint (`POST /gemini/chat/send`) with persisted user/assistant messages.
+  - Added Gemini translation endpoint (`POST /gemini/translate`).
+- Wired Gemini router into the main FastAPI app and bumped application version to `0.6.0`.
+
 ## 0.5.0 - 2026-03-29 11:32:15 GMT+3
 - Implemented Milestone 5 FTP Viewer module:
   - Added FTP/FTPS login session management (`POST /ftp/login`).
