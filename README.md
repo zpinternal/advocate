@@ -16,7 +16,7 @@ python run.py
 Runtime dependencies are listed in `requirements.txt` and are auto-installed by `run.py` when missing.
 
 ## Implemented Milestones
-- Milestone 1: bootstrap runner + env-based Basic auth.
+- Milestone 1: bootstrap runner + session-based login auth.
 - Milestone 2: ZLink metrics ingestion, dashboard, and latest release fetch/download link.
 - Milestone 3: File Explorer AJAX APIs and async task framework for archive/compress.
 - Milestone 4: Terminal APIs via AJAX and WebSocket.
@@ -61,4 +61,11 @@ Runtime dependencies are listed in `requirements.txt` and are auto-installed by 
 - `POST /gemini/translate`
 
 ## Version
-Current version: `0.6.1`.
+Current version: `0.7.0`.
+
+
+## UI Routes
+- `GET /login`
+- `POST /login`
+- `POST /logout`
+- `GET /dashboard`

@@ -49,3 +49,13 @@ static/vendors/<vendor_name>/ # for third party libraries
 - `BACKLOG.md` must always be appended to while implementing features/fixes.
 - `CHANGELOG.md` must include versioned entries with GMT+3 timestamps.
 - Run linters and formatters after code changes; if lint cannot be fixed, record it in `AGENT_NOTES.md`.
+
+## User Instruction Mirror (2026-03-29 Update)
+- If `agents.md` doesn't exist in a project, create it.
+- Include all user-provided instructions in `AGENTS.md` and add any missing ones.
+- Run linters and formatters after writing code; if lint can't be fixed, log it in `AGENT_NOTES.md`.
+- Use semantic versioning and increase version for every change (patch/minor/major per change type).
+- Ensure required project files remain present: `AGENT_NOTES.md`, `BACKLOG.md`, `CHANGELOG.md`, `DESIGN.md`, `README.md`.
+- Append to `BACKLOG.md` while implementing changes.
+- Add versioned entries to `CHANGELOG.md` with GMT+3 timestamps.
+- For web apps, use Playwright/Selenium for UI testing when available and keep assets in-repo for no-network setup.

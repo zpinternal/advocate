@@ -15,3 +15,5 @@
 - Add Gemini image generation preview/full-download workflow and TTS-to-opus conversion endpoints.
 - Add integration tests covering missing/invalid auth header behavior across middleware-protected routes.
 
+- Add CSRF protection tokens for login/logout form submissions.
+- Build first-class UI pages for Files/FTP/Terminal/Gemini modules under shared navigation.

@@ -13,3 +13,6 @@
 - 2026-03-29: Implemented Milestone 6 Gemini foundations (conversation/message persistence, sync endpoint, chat send, translation).
 - 2026-03-29: Fixed middleware auth exception handling so missing Authorization now returns 401 JSON instead of 500 on deployment.
 - 2026-03-29: Could not run FastAPI TestClient runtime check in this container because `fastapi` package is not installed locally.
+- 2026-03-29: Migrated authentication from HTTP Basic to cookie-backed session login pages (`/login`) and introduced shared dashboard/navigation templates.
+- 2026-03-29: Attempted UI automation check with `python -m playwright --version`; Playwright is still unavailable in this environment (`No module named playwright`).
+- 2026-03-29: FastAPI runtime smoke test via `fastapi.testclient` could not run because `fastapi` is not installed in the active Python interpreter.

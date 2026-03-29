@@ -18,6 +18,7 @@ REQUIRED_IMPORTS = {
     "fastapi": "fastapi",
     "uvicorn": "uvicorn",
     "multipart": "python-multipart",
+    "jinja2": "jinja2",
 }
 
 
